@@ -43,13 +43,40 @@ export async function detectFaces(imageBuffer: Buffer) {
     }
 
 
-    const inputTensor = new ort.Tensor('float32', chw, [1, 3, info.height, info.width]);    
-  
+    const inputTensor = new ort.Tensor('float32', chw, [1, 3, info.height, info.width]);
+
     const { retina } = await getFaceModels();
-    if (!retina) return;
     const result = await retina.run({ input: inputTensor });
-  
-    // Sample output processing – adjust as per model output
-    const boxes = result['boxes']; // or result[Object.keys(result)[0]] if unnamed
-    return boxes; // should return [{ x1, y1, x2, y2 }]
+
+
+    // Assuming output is a tensor with shape [N, 4] -> [x1, y1, x2, y2]
+    const boxesTensor = result['bbox']; // OR change key if needed
+    if (!boxesTensor || !boxesTensor.dims || !boxesTensor.data) {
+        console.error("Model did not return valid 'boxes'");
+        return;
+    }
+
+    const boxCount = boxesTensor.dims[0]; // N
+    const boxes: { x1: number, y1: number, x2: number, y2: number }[] = [];
+
+    for (let i = 0; i < boxCount; i++) {
+        const idx = i * 4;
+        const x1 = Number(boxesTensor.data[idx]);
+        const y1 = Number(boxesTensor.data[idx + 1]);
+        const x2 = Number(boxesTensor.data[idx + 2]);
+        const y2 = Number(boxesTensor.data[idx + 3]);
+        boxes.push({ x1, y1, x2, y2 });
+    }
+
+    return boxes;
+}
+
+export async function cropFace(imageBuffer: Buffer, bbox: any) {
+    // Use sharp / jimp to crop face from buffer
+    const cropped = await sharp(imageBuffer).extract({
+        left: bbox[0], top: bbox[1],
+        width: bbox[2] - bbox[0], height: bbox[3] - bbox[1]
+    }).resize(112, 112).toBuffer();
+
+    return cropped;
 }
