@@ -42,7 +42,7 @@
   [ONNX Runtime Pipeline]
      ├─ Load RetinaFace model (.onnx)
      ├─ Detect face(s)
-     ├─ Crop & Align face
+     ├─ Crop & Align face (sharp)
      ├─ Load ArcFace model (.onnx)
      ├─ Generate 512-d embedding
          ↓
