@@ -33,11 +33,11 @@
          ↓
   [Frontend: React/Webcam]
          ↓
-  →→ Open WebSocket connection →→
+  →→ Open Socket.io connection →→
          ↓
-  →→ Stream image frames via WebSocket →→
+  →→ Stream image frames via Socket.io →→
          ↓
-[Backend: Node.js Server with WebSocket Server]
+[Backend: Node.js Server with Socket.io Server]
          ↓
   [ONNX Runtime Pipeline]
      ├─ Load RetinaFace model (.onnx)

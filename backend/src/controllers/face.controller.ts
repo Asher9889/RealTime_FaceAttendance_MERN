@@ -5,7 +5,7 @@ export async function onFrame(socket: Socket,
     data: { image: string }):Promise<void> {
         try {
             
-         const result = await faceService.processImageFrame(data.image)
+         const result = await faceService.processImageFrame(socket, data.image)
         } catch (error) {
             
         }
