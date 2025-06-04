@@ -15,6 +15,7 @@
     "express": "^5.1.0",
     "mongoose": "^8.15.1",
     "onnxruntime-node": "^1.22.0",
+    "opencv4nodejs-prebuilt-install": "^4.1.209",
     "sharp": "^0.34.2",
     "socket.io": "^4.8.1"
   },

@@ -1,13 +1,18 @@
 import * as ort from 'onnxruntime-node';
 import { getFaceModels } from '../ai_models/onnxPipeline';
 import sharp from 'sharp';
+import cv from 'opencv4nodejs-prebuilt-install';
+import path from "path";
+import fs from "fs";
 
 
-interface Box {
-  bbox: [number, number, number, number]; // [x1, y1, x2, y2]
+
+type Box = {
   score: number;
-  landmarks: number[];
-}
+  bbox: [number, number, number, number]; // x1, y1, x2, y2
+  landmarks: number[]; // [x1, y1, x2, y2, ..., x5, y5]
+};
+
 
 export interface BoundingBox {
   x1: number;
@@ -20,76 +25,80 @@ export interface BoundingBox {
 
 export async function detectFaces(imageBuffer: Buffer): Promise<Box[]> {
   try {
-    // Save original size for rescaling later
+    const mat = cv.imdecode(imageBuffer);
+    const resizedMat = mat.resizeToMax(640);
+    const rgbMat = resizedMat.cvtColor(cv.COLOR_BGR2RGB);
 
+    const rows = rgbMat.rows;
+    const cols = rgbMat.cols;
 
-    // Resize + preprocess
-    const { data, info } = await sharp(imageBuffer)
-      .resize(320, 320, { fit: 'fill' })
-      .removeAlpha()
-      .raw()
-      .toBuffer({ resolveWithObject: true });
+    // Convert image to Float32Array in CHW format
+    const rgbData = rgbMat.getData();
+    const inputData = new Float32Array(3 * rows * cols);
 
-    const chwData = new Float32Array(3 * 320 * 320);
-    const mean = [104, 117, 123]; // B, G, R
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const idx = (y * cols + x) * 3;
+        const r = rgbData[idx];
+        const g = rgbData[idx + 1];
+        const b = rgbData[idx + 2];
 
-    for (let h = 0; h < 320; h++) {
-      for (let w = 0; w < 320; w++) {
-        for (let c = 0; c < 3; c++) {
-          const hwcIndex = h * 320 * 3 + w * 3 + c;
-          const chwIndex = c * 320 * 320 + h * 320 + w;
-          chwData[chwIndex] = data[hwcIndex] - mean[2 - c]; // RGB → BGR
-        }
+        const pixelIndex = y * cols + x;
+        inputData[0 * rows * cols + pixelIndex] = r / 255;
+        inputData[1 * rows * cols + pixelIndex] = g / 255;
+        inputData[2 * rows * cols + pixelIndex] = b / 255;
       }
     }
 
-    const inputTensor = new ort.Tensor('float32', chwData, [1, 3, 320, 320]);
+    const inputTensor = new ort.Tensor('float32', inputData, [1, 3, rows, cols]);
 
-    // console.log("input tensor: ", inputTensor)
-
-    // Load model and run inference
     const { retina } = await getFaceModels();
-    const output = await retina.run({ input: inputTensor });
+    const results = await retina.run({ input: inputTensor });
 
+    const confidence = results['confidence'].data as Float32Array;
+    const bbox = results['bbox'].data as Float32Array;
+    const landmark = results['landmark'].data as Float32Array;
 
-
+    const numAnchors = confidence.length / 2;
     const threshold = 0.9;
+    const output: Box[] = [];
 
-    const boxes = output.bbox.data;      // [4200 x 4]
-    const scores = output.confidence.data; // [4200 x 2]
-    const landmarks = output.landmark.data; // [4200 x 10]
+    for (let i = 0; i < numAnchors; i++) {
+      const score = confidence[i * 2]; // correct: face prob at index 0
 
-    const numAnchors = 4200;
-    const results = [];
+      if (score > threshold) {
+        let [x1, y1, x2, y2] = bbox.slice(i * 4, i * 4 + 4);
 
-    if (
-      boxes instanceof Float32Array &&
-      landmarks instanceof Float32Array &&
-      scores instanceof Float32Array
-    ) {
-      for (let i = 0; i < numAnchors; i++) {
-        const score = scores[i * 2 + 1];
+        // Handle normalized coordinates (some might be < 0)
+        x1 = Math.max(0, Math.min(Math.round(x1 * cols), cols));
+        y1 = Math.max(0, Math.min(Math.round(y1 * rows), rows));
+        x2 = Math.max(0, Math.min(Math.round(x2 * cols), cols));
+        y2 = Math.max(0, Math.min(Math.round(y2 * rows), rows));
 
-        if (typeof score === 'number' && score >= threshold) {
-          const box = boxes.slice(i * 4, i * 4 + 4);
-          const lmark = landmarks.slice(i * 10, i * 10 + 10);
+        const width = x2 - x1;
+        const height = y2 - y1;
 
-          results.push({
-            score,
-            bbox: Array.from(box) as [number, number, number, number],
-            landmarks: Array.from(lmark),
-          });
-        }
+        if (width <= 0 || height <= 0) continue;
+
+        const faceBox: [number, number, number, number] = [x1, y1, x2, y2];
+        const faceLandmarks = Array.from(landmark.slice(i * 10, (i + 1) * 10));
+
+        output.push({ score, bbox: faceBox, landmarks: faceLandmarks });
+
+        const faceRegion = resizedMat.getRegion(new cv.Rect(x1, y1, width, height));
+        const faceJPG = cv.imencode('.jpg', faceRegion);
+
+        const outputDir = path.join(__dirname, '../faces');
+        if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+
+        const outputPath = path.join(outputDir, `face_${i}.jpg`);
+        fs.writeFileSync(outputPath, faceJPG);
+
+        console.log(`✅ Face saved: ${outputPath}`);
       }
     }
 
-
-
-    if (results.length === 0) return [];
-
-    return results;
-
-
+    return output;
   } catch (err) {
     console.error('Face detection error:', err);
     return [];
@@ -120,7 +129,7 @@ export function decodeBase64Image(base64Image: string): Buffer | null {
 
 export async function cropFace(
   imageBuffer: Buffer,
-  faceBox: Box
+  faceBox: any
 ): Promise<{
   faceBuffer: Buffer;
   faceRect: { left: number; top: number; width: number; height: number };
@@ -134,9 +143,9 @@ export async function cropFace(
   const scaleX = originalWidth / modelInputSize;
   const scaleY = originalHeight / modelInputSize;
 
-  const [x1, y1, x2, y2] = faceBox.bbox;
+  const [x1, y1, x2, y2] = faceBox;
 
-  // Model output is based on resized 320x320, scale back to original
+  // Scale box back to original image dimensions
   const left = Math.max(0, Math.min(x1, x2) * scaleX);
   const right = Math.min(originalWidth, Math.max(x1, x2) * scaleX);
   const top = Math.max(0, Math.min(y1, y2) * scaleY);
@@ -157,7 +166,7 @@ export async function cropFace(
       width: Math.round(width),
       height: Math.round(height),
     })
-    .resize(112, 112)
+    .resize(112, 112) // Normalize to standard size
     .removeAlpha()
     .toBuffer();
 
@@ -175,6 +184,7 @@ export async function cropFace(
 
 
 
+
 export async function generateEmbedding(buffer: Buffer): Promise<Float32Array> {
 
   const { data, info } = await sharp(buffer)
@@ -183,9 +193,9 @@ export async function generateEmbedding(buffer: Buffer): Promise<Float32Array> {
     .raw()
     .toBuffer({ resolveWithObject: true });
 
-    console.log("data==", data, info)
+  console.log("data==", data, info)
 
-    const chw: number[][] = [[], [], []];
+  const chw: number[][] = [[], [], []];
 
   for (let i = 0; i < 112 * 112; i++) {
     chw[0].push((data[i * 3] - 127.5) / 128);
@@ -201,6 +211,31 @@ export async function generateEmbedding(buffer: Buffer): Promise<Float32Array> {
   const outputKey = arc.outputNames[0];
   return result[outputKey].data as Float32Array;
 }
+
+
+// It is convert retina tensor to boxes of four x1, y1, x2, y2
+// function parseRetinaBBoxes(bboxData: Float32Array): Box[] {
+//   const boxes: Box[] = [];
+
+//   for (let i = 0; i < bboxData.length; i += 4) {
+//     const x1 = bboxData[i];
+//     const y1 = bboxData[i + 1];
+//     const x2 = bboxData[i + 2];
+//     const y2 = bboxData[i + 3];
+
+//     // Optional filtering (skip invalid or negative boxes)
+//     if (x2 > x1 && y2 > y1 && x1 >= 0 && y1 >= 0) {
+//       boxes.push({
+//         x: x1,
+//         y: y1,
+//         width: x2 - x1,
+//         height: y2 - y1,
+//       });
+//     }
+//   }
+
+//   return boxes;
+// }
 
 
 

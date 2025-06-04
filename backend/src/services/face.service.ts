@@ -18,20 +18,20 @@ export async function processImageFrame(socket: Socket, base64Image: string) {
     }
 
     // Crop & align the first detected face
-    const alignedFace = await cropFace(imageBuffer, faceBoxes[0]);
-    console.log("alignedFace: ", alignedFace)
-    if (!Buffer.isBuffer(alignedFace?.faceBuffer)) {
-        return socket.emit('recognition-result', {
-            success: false,
-            message: 'Face alignment failed',
-            data: null
-        });
-    }
-    socket.emit('recognition-result', {
-        success: true,
-        message: 'Face alignment success',
-        data: alignedFace
-    });
+    // const alignedFace = await cropFace(imageBuffer, faceBoxes[0]);
+    // // console.log("alignedFace: ", alignedFace)
+    // if (!Buffer.isBuffer(alignedFace?.faceBuffer)) {
+    //     return socket.emit('recognition-result', {
+    //         success: false,
+    //         message: 'Face alignment failed',
+    //         data: null
+    //     });
+    // }
+    // socket.emit('recognition-result', {
+    //     success: true,
+    //     message: 'Face alignment success',
+    //     data: alignedFace
+    // });
 
 
 
