@@ -1,5 +1,6 @@
-import { processImageFrame } from "./face.service";
+import { processImageFrame, run } from "./face.service";
 
 export const faceService = {
-    processImageFrame
+    processImageFrame,
+    run
 }
