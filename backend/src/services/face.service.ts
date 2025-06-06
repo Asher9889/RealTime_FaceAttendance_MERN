@@ -1,39 +1,58 @@
 import { Socket } from "socket.io";
-import fs from "fs";
-import path from "path";
-import canvas from "canvas";
-import * as faceapi from '@vladmandic/face-api';
 import { decodeBase64Image, detectFaces } from "../utils/helpers";
-
-
+import { workerPool } from "../utils";
 
 
 
 export async function run(socket: Socket, base64Image: string) {
   try {
+    const buffer = decodeBase64Image(base64Image);
+    if (!buffer) return;
 
-   const imgBuffer = decodeBase64Image(base64Image);
-    if(!imgBuffer) return;
-    const img = await canvas.loadImage(imgBuffer);
-    const detections = await faceapi.detectAllFaces(img as unknown as faceapi.TNetInput).withFaceLandmarks().withFaceDescriptors();
-    console.log("detections", detections);
-    const faceBoxes = detections.map((d) => {
-      const box = d.detection.box;
-      return {
-        x: box.x,
-        y: box.y,
-        width: box.width,
-        height: box.height,
-        score: d.detection.score, // optional: detection confidence
-      };
+     // Add the job to the pool with callback to emit results
+     workerPool.addJob(buffer, socket.id, (faceBoxes) => {
+      console.log("Worker pool starts")
+      socket.emit("face-boxes", faceBoxes);
     });
-
-    return socket.emit("face-boxes", faceBoxes)
-
-  } catch (error) {
-    console.log("error is:", error)
+  } catch (err) {
+    console.error("run() error:", err);
   }
 }
+
+
+// export async function run(socket: Socket, base64Image: string) {
+//   try {
+//     const buffer = decodeBase64Image(base64Image); // You already have this utility
+//     if (!buffer) return;
+
+//     const worker = new Worker(path.join(__dirname, "../utils/workers/faceWorker.js"));
+
+//     // sending buffer data to worker.
+//     worker.postMessage({ buffer });
+
+//     // listen the event, .once fn creats a new event.
+//     worker.once("message", (faceBoxes) => {
+//       console.log("👨‍🏭 Worker responded with boxes:", faceBoxes);
+//       socket.emit("face-boxes", faceBoxes);
+//       worker.terminate(); // Terminate after response
+//     });
+
+//     // when error occurs
+//     worker.once("error", (err) => {
+//       console.error("❌ Worker error:", err);
+//       worker.terminate();
+//     });
+
+    
+//     worker.once("exit", (code) => {
+//       if (code !== 0) {
+//         console.error("❗Worker stopped with exit code", code);
+//       }
+//     });
+//   } catch (error) {
+//     console.error("Error running worker:", error);
+//   }
+// }
 
 
 
