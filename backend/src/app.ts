@@ -10,9 +10,9 @@ import { loadModels } from "./models/index";
 const app = express();
 app.use(cors()); 
 
-loadModels().catch((e)=>{
-  console.log("error from models",e)
-})
+// loadModels().catch((e)=>{
+//   console.log("error from models",e)
+// })
 
 const server = http.createServer(app);
 const io:Server = new Server(server, {

@@ -7,7 +7,7 @@ export default function socketHandler(io: Server) {
     console.log("✅ Client connected:", socket.id);
 
 
-    socket.emit("message", "Hello from backend! 🎉");
+    socket.emit("welcome", "Hello from backend! 🎉");
 
 
     socket.on("frame", (data: { image: string }) => {

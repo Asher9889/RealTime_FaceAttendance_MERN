@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Webcam from "react-webcam";
 import { io } from "socket.io-client";
 
@@ -7,109 +7,120 @@ const socket = io("http://localhost:5000", {
   upgrade: false,
 });
 
+interface IFaceReacts {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  score: number;
+}
+
 export default function App() {
   const webcamRef = useRef<Webcam>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [status, setStatus] = useState("Connecting... 🔄");
   const [message, setMessage] = useState("");
-  const [faceRects, setFaceRects] = useState<
-    { left?: number; top?: number; x?: number; y?: number; width: number; height: number; score?: number }[]
-  >([]);
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | undefined>(undefined);
 
-  // Load available cameras
+  const faceRectsRef = useRef<IFaceReacts[]>([]);
+  const prevRectsRef = useRef<IFaceReacts[]>([]);
+  const sending = useRef(false);
+
+  // Get video devices
   useEffect(() => {
     navigator.mediaDevices.enumerateDevices().then((devices) => {
-      const videoInputs = devices.filter((device) => device.kind === "videoinput");
+      const videoInputs = devices.filter((d) => d.kind === "videoinput");
       setVideoDevices(videoInputs);
-      if (videoInputs.length > 1) {
-        setSelectedDeviceId(videoInputs[1].deviceId);
-      } else if (videoInputs.length > 0) {
-        setSelectedDeviceId(videoInputs[0].deviceId);
-      }
+      setSelectedDeviceId(videoInputs[0]?.deviceId);
     });
   }, []);
 
-  // Handle WebSocket events
+  // Socket logic
   useEffect(() => {
-    socket.on("connect", () => {
-      console.log("✅ Connected to WebSocket", socket.id);
-      setStatus("Connected ✅");
-    });
+    socket.on("connect", () => setStatus("Connected ✅"));
+    socket.on("disconnect", () => setStatus("Disconnected ❌"));
+    socket.on("welcome", (data) => setMessage(data));
 
-    socket.on("message", (data: string) => {
-      console.log("📩 Message from server:", data);
-      setMessage(data);
-    });
-
-    socket.on("disconnect", () => {
-      console.log("❌ Disconnected from WebSocket");
-      setStatus("Disconnected ❌");
-    });
-
-    socket.on("face-boxes", (faceBoxes) => {
-      if (Array.isArray(faceBoxes)) {
-        console.log("📦 Face boxes received:", faceBoxes);
-        setFaceRects(faceBoxes);
-      } else {
-        setFaceRects([]);
+    socket.on("face-boxes", (boxes: IFaceReacts[]) => {
+      if (hasSignificantChange(prevRectsRef.current, boxes)) {
+        prevRectsRef.current = boxes;
+        faceRectsRef.current = boxes;
       }
+      sending.current = false;
     });
 
-    const intervalId = setInterval(() => {
-      emitImage();
-    }, 1000);
+    const captureInterval = setInterval(() => {
+      if (!sending.current) emitImage();
+    }, 300);
 
     return () => {
-      clearInterval(intervalId);
+      clearInterval(captureInterval);
+      socket.off("connect");
+      socket.off("disconnect");
+      socket.off("welcome");
+      socket.off("face-boxes");
     };
   }, []);
 
-  // Draw green circles on canvas
+  // Draw loop with requestAnimationFrame
   useEffect(() => {
-    if (!canvasRef.current || !webcamRef.current?.video) return;
+    let frameId: number;
 
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    const video = webcamRef.current.video;
+    const draw = () => {
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      const video = webcamRef.current?.video;
 
-    if (!ctx || !video) return;
+      if (!canvas || !ctx || !video) return;
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    faceRects.forEach((face) => {
-      const x = face.x ?? face.left ?? 0;
-      const y = face.y ?? face.top ?? 0;
-      const width = face.width;
-      const height = face.height;
+      faceRectsRef.current.forEach((face) => {
+        const { x, y, width, height, score } = face;
+        ctx.beginPath();
+        ctx.rect(x, y, width, height);
+        ctx.strokeStyle = "green";
+        ctx.lineWidth = 2;
+        ctx.stroke();
 
-      const centerX = x + width / 2;
-      const centerY = y + height / 2;
-      const radius = Math.max(width, height) / 2;
-
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
-      ctx.strokeStyle = "green";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      if (face.score !== undefined) {
-        ctx.font = "14px Arial";
         ctx.fillStyle = "green";
-        ctx.fillText(`Score: ${face.score.toFixed(2)}`, x, y - 5);
-      }
-    });
-  }, [faceRects]);
+        ctx.font = "14px Arial";
+        ctx.fillText(`Score: ${score.toFixed(2)}`, x, y - 5);
+      });
 
+      frameId = requestAnimationFrame(draw);
+    };
+
+    frameId = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(frameId);
+  }, []);
+
+  // Send image to backend
   function emitImage() {
     if (!webcamRef.current) return;
-    const imageSrc = webcamRef.current.getScreenshot();
-    if (!imageSrc) return;
-    socket.emit("frame", { image: imageSrc });
+    const image = webcamRef.current.getScreenshot();
+    if (image) {
+      sending.current = true;
+      socket.emit("frame", { image });
+    }
+  }
+
+  // Compare previous and current boxes
+  function hasSignificantChange(prev: IFaceReacts[], next: IFaceReacts[]) {
+    if (prev.length !== next.length) return true;
+    return next.some((curr, i) => {
+      const prevFace = prev[i];
+      return (
+        Math.abs(prevFace.x - curr.x) > 5 ||
+        Math.abs(prevFace.y - curr.y) > 5 ||
+        Math.abs(prevFace.width - curr.width) > 5 ||
+        Math.abs(prevFace.height - curr.height) > 5
+      );
+    });
   }
 
   return (
@@ -117,18 +128,15 @@ export default function App() {
       <h1 className="text-2xl font-bold text-gray-800">{status}</h1>
 
       <div className="flex items-center gap-4">
-        <label htmlFor="cameraSelect" className="font-semibold text-gray-700">
-          Select Camera:
-        </label>
+        <label className="font-semibold text-gray-700">Select Camera:</label>
         <select
-          id="cameraSelect"
           className="border p-2 rounded"
           value={selectedDeviceId}
           onChange={(e) => setSelectedDeviceId(e.target.value)}
         >
           {videoDevices.map((device) => (
             <option key={device.deviceId} value={device.deviceId}>
-              {device.label}
+              {device.label || `Camera ${device.deviceId}`}
             </option>
           ))}
         </select>
@@ -137,12 +145,10 @@ export default function App() {
       <div className="relative" style={{ width: 640, height: 480 }}>
         <Webcam
           ref={webcamRef}
-          className="rounded-xl border shadow-lg"
+          mirrored
           audio={false}
-          mirrored={true}
           screenshotFormat="image/jpeg"
-          width={640}
-          height={480}
+          className="rounded-xl border shadow-lg"
           videoConstraints={{
             deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
             width: 640,
@@ -151,13 +157,8 @@ export default function App() {
         />
         <canvas
           ref={canvasRef}
-          width={640}
-          height={480}
           className="absolute top-0 left-0"
-          style={{
-            pointerEvents: "none",
-            zIndex: 10,
-          }}
+          style={{ pointerEvents: "none", zIndex: 10 }}
         />
       </div>
 

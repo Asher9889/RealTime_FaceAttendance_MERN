@@ -282,8 +282,8 @@ export function decodeBase64Image(base64Image: string): Buffer | null {
       throw new Error('Invalid base64 image string');
     }
 
-    const base64Data = matches[2];
-    return Buffer.from(base64Data, 'base64');
+    const base64ImgData = matches[2];
+    return Buffer.from(base64ImgData, 'base64');
   } catch (error) {
     console.log(error);
     return null;
