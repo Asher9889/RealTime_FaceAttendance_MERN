@@ -1,9 +1,18 @@
 import dotenv from 'dotenv';
-
 dotenv.config();
 
-const config = {
-    port : process.env.PORT
+type Config = {
+    port: number;
+    mongoDBURL: string;
+    dbName: string;
+}
+
+
+
+const config:Config = {
+    port: Number(process.env.PORT),
+    mongoDBURL: String(process.env.MONGODB_URL),
+    dbName: String(process.env.DB_NAME)
 }
 
 export default config;

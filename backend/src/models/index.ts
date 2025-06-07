@@ -1,3 +1,6 @@
 import loadModels from "./loadModels";
+import Face from "../db";
 
-export { loadModels }
+
+
+export { loadModels, Face }

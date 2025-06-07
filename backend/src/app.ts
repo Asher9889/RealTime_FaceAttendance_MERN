@@ -5,7 +5,9 @@ import cors from "cors";
 import socketHandler from "./websocket/socketHandler";
 import loadOnnxModels from "./utils/ai_models/onnxPipeline";
 import { loadModels } from "./models/index";
+import connectMongoDB from "./db/connectMongoDB";
 
+connectMongoDB().catch((err)=> {console.log(err)})
 
 const app = express();
 app.use(cors()); 

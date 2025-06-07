@@ -7,14 +7,9 @@ import fs from "fs";
 
 export async function run(socket: Socket, base64Image: string) {
   try {
-    const buffer = decodeBase64Image(base64Image);
-    
+    const buffer = decodeBase64Image(base64Image);    
     if (!buffer) return;
-    
-    fs.writeFileSync("temp1.jpg", buffer);
-    // console.log("buffer from base64Image", buffer)
 
-     // Add the job to the pool with callback to emit results
      workerPool.addJob(buffer, socket.id, (faceBoxes) => {
       // console.log("Worker pool starts")
       socket.emit("face-boxes", faceBoxes);
