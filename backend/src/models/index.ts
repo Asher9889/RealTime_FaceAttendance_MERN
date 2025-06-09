@@ -1,5 +1,5 @@
 import loadModels from "./loadModels";
-import Face from "../db";
+import Face from "./face.model";
 
 
 

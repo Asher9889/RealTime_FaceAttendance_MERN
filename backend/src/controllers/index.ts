@@ -1,5 +1,6 @@
-import { onFrame } from "./face.controller";
+import { onFrame, upload } from "./face.controller";
 
 export const faceController = {
-    onFrame: onFrame,
+    onFrame,
+    upload
 }

@@ -26,7 +26,7 @@ async function loadModels() {
   console.log("✅ All face-api models loaded");
 }
 
-async function bufferToCanvas(buffer: Buffer) {
+export async function bufferToCanvas(buffer: Buffer) {
   const jpegBuffer = await sharp(buffer).jpeg().toBuffer(); // or .png() if needed
 
   const img = new Image();
