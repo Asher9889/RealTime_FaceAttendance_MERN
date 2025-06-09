@@ -6,7 +6,14 @@ import fs from "fs";
 import path from "path";
 import sharp = require("sharp");
 
-
+export interface IfaceBoxes {
+  x: number;
+  y: number;
+  width: number,
+  height: number,
+  score: number,
+  descriptor?: Float32Array;
+}
 
 async function loadModels() {
 
@@ -59,22 +66,23 @@ async function main() {
     parentPort?.on("message", async ({ id, buffer }) => {
 
       const img = await bufferToCanvas(buffer);
-      
+
       const detections = await faceapi
         .detectAllFaces(img as any)
         .withFaceLandmarks()
-      // .withAgeAndGender();
+        // .withAgeAndGender();
+        .withFaceDescriptors()
 
-      console.log("✅ Detection complete. Faces:", detections.length);
-
-      const faceBoxes = detections.map((d) => {
+      const faceBoxes:IfaceBoxes[] = detections.map((d) => {
         const box = d.detection.box;
+        const descriptor = d.descriptor;
         return {
           x: box.x,
           y: box.y,
           width: box.width,
           height: box.height,
           score: d.detection.score,
+          descriptor: descriptor
         };
       });
 

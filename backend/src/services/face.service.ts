@@ -1,24 +1,66 @@
 import { Socket } from "socket.io";
 import { decodeBase64Image, detectFaces } from "../utils/helpers";
-import { workerPool } from "../utils";
+import { cosineSimilarity, workerPool } from "../utils";
 import fs from "fs";
+import { loadKnownFacesFromDB } from "../db";
+import { IfaceBoxes } from "../utils/workers/faceWorker";
+import * as faceapi from "@vladmandic/face-api";
 
-
+interface IKnownFace {
+  name: string;
+  embedding: number[]; // or Float32Array
+}
 
 export async function run(socket: Socket, base64Image: string) {
   try {
-    const buffer = decodeBase64Image(base64Image);    
+    const buffer = decodeBase64Image(base64Image);
     if (!buffer) return;
 
-     workerPool.addJob(buffer, socket.id, (faceBoxes) => {
-      // console.log("Worker pool starts")
-      socket.emit("face-boxes", faceBoxes);
-      // console.log("face-boxes emitted")
+    const knownFaceData: IKnownFace[] = await loadKnownFacesFromDB() || []; // [{ name, descriptor }]
+
+    workerPool.addJob(buffer, socket.id, (faceBoxes: IfaceBoxes[]) => {
+      // if (faceBoxes.length === 0 || knownFaceData?.length === 0 || !knownFaceData ) return;
+
+      const labeledFaces = faceBoxes.map((faceBox) => {
+        let bestMatchName = "Unknown";
+        let bestDistance = Infinity;
+
+        knownFaceData.forEach((known) => {
+          if (!known.embedding) return;
+        
+          const knownVector = new Float32Array(known.embedding);
+          const inputVector = new Float32Array(faceBox.descriptor || []);
+        
+          if (knownVector.length !== 128 || inputVector.length !== 128) return;
+        
+          const distance = faceapi.euclideanDistance(inputVector, knownVector);
+        
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestMatchName = known.name;
+          }
+        });
+
+        // Reject if distance is too high (i.e., not similar enough)
+        if (bestDistance > 0.45) {
+          bestMatchName = "Unknown";
+        }
+
+        return {
+          ...faceBox,
+          name: bestMatchName,
+          score: bestDistance,
+        };
+      });
+      // console.log("labeledFaces: ", labeledFaces)
+      socket.emit("face-boxes", labeledFaces); 
     });
+
   } catch (err) {
     console.error("run() error:", err);
   }
 }
+
 
 
 // export async function run(socket: Socket, base64Image: string) {
@@ -44,7 +86,7 @@ export async function run(socket: Socket, base64Image: string) {
 //       worker.terminate();
 //     });
 
-    
+
 //     worker.once("exit", (code) => {
 //       if (code !== 0) {
 //         console.error("❗Worker stopped with exit code", code);
