@@ -53,3 +53,11 @@
 [ Send recognition results back to frontend via WebSocket ]
          ↓
 [ Frontend UI updates instantly with Match Name / Confidence ]   
+
+
+## Current Flow:
+Browser (Webcam + base64 image every 300ms)
+    └─ emits to backend (Socket.IO / API)
+        └─ Backend decodes + runs face-api.js
+            └─ Matches face and marks attendance
+

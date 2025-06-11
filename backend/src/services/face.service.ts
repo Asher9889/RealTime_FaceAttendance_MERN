@@ -16,7 +16,7 @@ export async function run(socket: Socket, base64Image: string) {
     const buffer = decodeBase64Image(base64Image);
     if (!buffer) return;
 
-    const knownFaceData: IKnownFace[] = await loadKnownFacesFromDB() || []; // [{ name, descriptor }]
+    const knownFaceData: IKnownFace[] = await loadKnownFacesFromDB() || []; // [{ name, embadding }]
 
     workerPool.addJob(buffer, socket.id, (faceBoxes: IfaceBoxes[]) => {
       // if (faceBoxes.length === 0 || knownFaceData?.length === 0 || !knownFaceData ) return;
