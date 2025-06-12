@@ -13,6 +13,7 @@ interface IFaceReacts {
   width: number;
   height: number;
   score: number;
+  name: string;
 }
 
 export default function App() {
@@ -23,12 +24,13 @@ export default function App() {
   const [message, setMessage] = useState("");
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | undefined>(undefined);
+  const [name, setName] = useState("");
 
   const faceRectsRef = useRef<IFaceReacts[]>([]);
   const prevRectsRef = useRef<IFaceReacts[]>([]);
   const sending = useRef(false);
 
-  // Get video devices
+  // 🔍 Get list of video input devices
   useEffect(() => {
     navigator.mediaDevices.enumerateDevices().then((devices) => {
       const videoInputs = devices.filter((d) => d.kind === "videoinput");
@@ -37,7 +39,7 @@ export default function App() {
     });
   }, []);
 
-  // Socket logic
+  // 🔌 WebSocket logic
   useEffect(() => {
     socket.on("connect", () => setStatus("Connected ✅"));
     socket.on("disconnect", () => setStatus("Disconnected ❌"));
@@ -64,7 +66,7 @@ export default function App() {
     };
   }, []);
 
-  // Draw loop with requestAnimationFrame
+  // 🎨 Draw loop
   useEffect(() => {
     let frameId: number;
 
@@ -80,15 +82,22 @@ export default function App() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       faceRectsRef.current.forEach((face) => {
-        const { x, y, width, height, score } = face;
+        const { x, y, width, height, score, name } = face;
         ctx.beginPath();
         ctx.rect(x, y, width, height);
         ctx.strokeStyle = "green";
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        ctx.fillStyle = "green";
+        // Set common styles for text
+        ctx.fillStyle = "white";
         ctx.font = "14px Arial";
+        ctx.textBaseline = "top";
+
+        // Draw name above the box
+        ctx.fillText(`Name: ${name}`, x, y - 20);
+
+        // Draw score just above the box
         ctx.fillText(`Score: ${score.toFixed(2)}`, x, y - 5);
       });
 
@@ -99,7 +108,7 @@ export default function App() {
     return () => cancelAnimationFrame(frameId);
   }, []);
 
-  // Send image to backend
+  // 📤 Emit frame to backend via socket
   function emitImage() {
     if (!webcamRef.current) return;
     const image = webcamRef.current.getScreenshot();
@@ -109,7 +118,37 @@ export default function App() {
     }
   }
 
-  // Compare previous and current boxes
+  // 📸 Capture photo manually for API
+  async function handleCapturePhoto() {
+    const image = webcamRef.current?.getScreenshot();
+    if (!image) return;
+
+    if (!name.trim()) {
+      alert("Please enter a name before capturing.");
+      return;
+    }
+
+    try {
+      const response = await fetch("http://localhost:5000/api/v1/face/upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          image: image,
+          name: name.trim()
+        }),
+      });
+
+      const result = await response.json();
+      alert("Photo sent! ✅\nResponse: " + JSON.stringify(result));
+    } catch (err) {
+      console.error("Error sending captured photo:", err);
+      alert("❌ Failed to send photo");
+    }
+  }
+
+  // 🔁 Check if face has significantly moved
   function hasSignificantChange(prev: IFaceReacts[], next: IFaceReacts[]) {
     if (prev.length !== next.length) return true;
     return next.some((curr, i) => {
@@ -142,6 +181,14 @@ export default function App() {
         </select>
       </div>
 
+      <input
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Enter your name"
+        className="border px-4 py-2 rounded w-64"
+      />
+
       <div className="relative" style={{ width: 640, height: 480 }}>
         <Webcam
           ref={webcamRef}
@@ -161,6 +208,13 @@ export default function App() {
           style={{ pointerEvents: "none", zIndex: 10 }}
         />
       </div>
+
+      <button
+        onClick={handleCapturePhoto}
+        className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition"
+      >
+        📸 Capture Photo
+      </button>
 
       <div className="text-green-700 font-semibold">{message}</div>
     </div>
