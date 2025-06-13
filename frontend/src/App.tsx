@@ -49,6 +49,7 @@ export default function App() {
       if (hasSignificantChange(prevRectsRef.current, boxes)) {
         prevRectsRef.current = boxes;
         faceRectsRef.current = boxes;
+        
       }
       sending.current = false;
     });

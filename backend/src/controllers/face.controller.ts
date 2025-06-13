@@ -6,6 +6,7 @@ import { Face, loadModels } from "../models";
 import { decodeBase64Image } from "../utils/helpers";
 import { bufferToCanvas } from "../utils/workers/faceWorker";
 
+// Live face checking
 export async function onFrame(socket: Socket,
   data: { image: string }): Promise<void> {
   try {
@@ -17,6 +18,7 @@ export async function onFrame(socket: Socket,
   }
 }
 
+// Register Face
 export async function upload(req: Request, res: Response, next: NextFunction): Promise<Response | void> {
   try {
     const { image, name } = req.body;
