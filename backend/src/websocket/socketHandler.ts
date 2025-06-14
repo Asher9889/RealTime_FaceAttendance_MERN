@@ -1,8 +1,7 @@
 import { Server, Socket } from "socket.io";
 import { faceController } from "../controllers";
 import ffmpeg from "fluent-ffmpeg";
-//@ts-ignores
-import Stream from "node-rtsp-stream";
+
 
 
 export default function socketHandler(io: Server) {
@@ -14,7 +13,10 @@ export default function socketHandler(io: Server) {
   const rtspUrl = `rtsp://admin:msspl1234@192.168.1.229:554/1/1`;
 
   const command = ffmpeg(rtspUrl)
-    .addInputOption("-rtsp_transport", "tcp")
+  .inputOptions([
+    "-rtsp_transport", "tcp",
+    "-loglevel", "debug" // <-- show full logs
+  ])
     // .addInputOption("-stimeout", "5000000") // optional timeout
     .outputOptions("-vf", "fps=5") // 5 frames per second
     .outputOptions("-qscale:v", "2")
