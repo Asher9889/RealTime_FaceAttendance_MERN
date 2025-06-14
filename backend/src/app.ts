@@ -20,6 +20,7 @@ app.use(express.json({ limit: "10mb" }));
 // })
 
 const server = http.createServer(app);
+
 const io:Server = new Server(server, {
   cors: {
     origin: "http://localhost:5173", 

@@ -61,3 +61,18 @@ Browser (Webcam + base64 image every 300ms)
         └─ Backend decodes + runs face-api.js
             └─ Matches face and marks attendance
 
+
+## Flow For CCTV
+CCTV RTSP Camera
+        ↓
+   [Node Backend]
+    - ffmpeg converts RTSP → MJPEG
+    - Extract frames for face detection
+    - Broadcast both:
+        → MJPEG stream to frontend <img> tag
+        → Face box data via socket.io
+
+        ↓                ↓
+  <img src="/stream">   socket.on("boxes")
+        ↓                ↓
+     shows video     overlays boxes
